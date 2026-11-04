@@ -49,7 +49,7 @@ jobs:
         run: terraform validate
 
   deploy:
-    name: Despliegue (instance refresh del ASG)
+    name: Despliegue (preparación)
     needs: [app, terraform]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -71,23 +71,14 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Lanzar instance refresh
+      # AWS Academy bloquea autoscaling:StartInstanceRefresh con una politica de
+      # la organizacion, asi que el pipeline valida credenciales y estado del ASG
+      # (preparacion del despliegue). En un entorno real aqui iria el instance refresh.
+      - name: Verificar despliegue (preparación)
         if: steps.cfg.outputs.ready == 'true'
         run: |
-          aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}'
-      - name: Esperar a que termine
-        if: steps.cfg.outputs.ready == 'true'
-        run: |
-          for i in $(seq 1 40); do
-            s=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$ASG_NAME" \
-                --query 'InstanceRefreshes[0].Status' --output text)
-            echo "estado: $s"
-            case "$s" in
-              Successful) exit 0 ;;
-              Failed|Cancelled) exit 1 ;;
-            esac
-            sleep 30
-          done
-          exit 1
+          aws sts get-caller-identity --query Arn --output text
+          aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG_NAME" \
+            --query 'AutoScalingGroups[0].{Nombre:AutoScalingGroupName,Deseadas:DesiredCapacity,Instancias:length(Instances)}' \
+            --output table
