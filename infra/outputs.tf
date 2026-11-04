@@ -38,11 +38,6 @@ output "rds_replica_endpoint" {
   value       = var.create_replica ? aws_db_instance.replica[0].address : "sin replica"
 }
 
-output "s3_bucket" {
-  description = "Bucket S3 de almacenamiento"
-  value       = aws_s3_bucket.assets.bucket
-}
-
 output "cloudwatch_dashboard" {
   description = "Nombre del dashboard de CloudWatch"
   value       = aws_cloudwatch_dashboard.main.dashboard_name
