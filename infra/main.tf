@@ -159,12 +159,31 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  # El DNS de la VPC y el servicio de metadatos no pasan por los SG, no hacen falta reglas.
   egress {
-    description = "Salida a Internet via NAT (git, npm, dnf) y hacia RDS"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTPS a Internet via NAT (git clone, npm, dnf)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "HTTP a Internet via NAT (repositorios de dnf)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Se usa el CIDR de la VPC y no el SG de la BD para evitar una dependencia
+  # circular (el SG de la BD ya referencia al SG de la app en su ingress).
+  egress {
+    description = "PostgreSQL hacia RDS (primaria y replica) dentro de la VPC"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
   }
 
   tags = { Name = "${var.project_name}-app-sg" }
@@ -354,7 +373,7 @@ resource "aws_autoscaling_group" "app" {
   vpc_zone_identifier       = aws_subnet.private[*].id
   target_group_arns         = [aws_lb_target_group.app.arn]
   health_check_type         = "ELB"
-  health_check_grace_period = 180
+  health_check_grace_period = 300
 
   launch_template {
     id      = aws_launch_template.app.id
