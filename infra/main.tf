@@ -344,6 +344,10 @@ resource "aws_launch_template" "app" {
     http_tokens = "required"
   }
 
+  monitoring {
+    enabled = true
+  }
+
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     repo_url     = var.repo_url
     repo_branch  = var.repo_branch
@@ -374,6 +378,9 @@ resource "aws_autoscaling_group" "app" {
   target_group_arns         = [aws_lb_target_group.app.arn]
   health_check_type         = "ELB"
   health_check_grace_period = 300
+
+  metrics_granularity = "1Minute"
+  enabled_metrics     = ["GroupDesiredCapacity", "GroupInServiceInstances", "GroupTotalInstances"]
 
   launch_template {
     id      = aws_launch_template.app.id
