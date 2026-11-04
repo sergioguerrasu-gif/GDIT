@@ -1,6 +1,6 @@
 #!/bin/bash
 # Se ejecuta una vez al arrancar cada instancia del Auto Scaling Group.
-# Los valores ${...} los reemplaza Terraform (templatefile).
+# Los valores con formato dolar-llave los reemplaza Terraform (templatefile).
 set -xe
 exec > >(tee /var/log/user-data.log) 2>&1
 
