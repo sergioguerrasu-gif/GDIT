@@ -1,0 +1,93 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Lint y pruebas (app)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Pruebas
+        run: npm test
+
+  terraform:
+    name: Validar Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: fmt
+        run: terraform fmt -check -recursive
+      - name: init (sin backend ni credenciales)
+        run: terraform init -backend=false -input=false
+      - name: validate
+        run: terraform validate
+
+  deploy:
+    name: Despliegue (instance refresh del ASG)
+    needs: [app, terraform]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      # Secretos del repo (Settings > Secrets and variables > Actions).
+      # En AWS Academy cambian en cada sesion del lab: actualizarlos antes de desplegar.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ASG_NAME: ${{ vars.ASG_NAME }}
+    steps:
+      - name: Verificar configuracion
+        id: cfg
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$ASG_NAME" ]; then
+            echo "::notice::Sin secretos AWS o variable ASG_NAME: se omite el despliegue (solo se prepara)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Lanzar instance refresh
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}'
+      - name: Esperar a que termine
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          for i in $(seq 1 40); do
+            s=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$ASG_NAME" \
+                --query 'InstanceRefreshes[0].Status' --output text)
+            echo "estado: $s"
+            case "$s" in
+              Successful) exit 0 ;;
+              Failed|Cancelled) exit 1 ;;
+            esac
+            sleep 30
+          done
+          exit 1

@@ -1,0 +1,13 @@
+# Copia este archivo a terraform.tfvars y ajusta los valores:
+#   cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars esta en .gitignore: NO lo subas al repositorio.
+
+aws_region   = "us-east-1"
+project_name = "dgiti"
+
+# Repositorio PUBLICO de GitHub con este proyecto (las instancias hacen git clone)
+repo_url    = "https://github.com/sergioguerrasu-gif/GDIT.git"
+repo_branch = "main"
+
+# Minimo 8 caracteres; evita los caracteres @ / " y los espacios
+db_password = "CambiaEstaClave2026"
